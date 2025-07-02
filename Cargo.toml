@@ -1,0 +1,12 @@
+[package]
+name = "clusterium_server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+
+[workspace]
+members = [
+    "crates/stack-ledger",
+    "crates/ledger-server",
+]
