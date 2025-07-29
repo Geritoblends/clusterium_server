@@ -16,6 +16,7 @@
         "item_uuid", // rastreador del item o stack
         "sequence_number", // Un número entero secuencial que va aumentando en 1 cada vez que hay una nueva entry en el ledger con el mismo item_uuid
         "uuid", // Llave primaria, hash de item_uuid, account_id y sequence_number. Al insertar una nueva entry, se especifica ON CONFLICT DO NOTHING (loggearlo en vez de no hacer nada)
+        "active", // Se desactiva cuando balance = 0, para descartar dichas entries en las búsquedas.
         }
     - Operaciones:
         * Create
