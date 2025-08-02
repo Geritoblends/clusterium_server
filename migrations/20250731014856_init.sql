@@ -2,12 +2,8 @@
 
 -- Consumed table with hash-based exclusion constraint
 CREATE TABLE consumed (
-    stack_uuid BIGINT NOT NULL
+    stack_uuid BYTEA NOT NULL
 );
-
--- Hash index for lookups
--- CREATE INDEX idx_consumed_stack_uuid ON consumed USING hash (stack_uuid);
--- Por el momento no le veo utilidad, pero podría tenerla
 
 -- Exclusion constraint for uniqueness using hash
 ALTER TABLE consumed ADD CONSTRAINT exc_consumed_stack_uuid 
@@ -15,8 +11,9 @@ EXCLUDE USING hash (stack_uuid WITH =);
 
 -- Latest balances table
 CREATE TABLE latest (
+    key BYTEA NOT NULL,
     account_id TEXT NOT NULL,
-    stack_uuid BIGINT NOT NULL,
+    stack_uuid BYTEA NOT NULL,
     sequence_number INTEGER NOT NULL CHECK (sequence_number >= 0),
     balance INTEGER NOT NULL CHECK (balance >= 0),
     item_type INTEGER NOT NULL,
@@ -24,23 +21,41 @@ CREATE TABLE latest (
 );
 
 -- For ownership validation
-CREATE INDEX idx_latest_key ON latest USING hash (account_id, stack_uuid)
+CREATE INDEX idx_latest_key ON latest USING hash (key)
 
 -- Exclusion constraint on the generated key
 ALTER TABLE latest ADD CONSTRAINT exc_latest_key 
 EXCLUDE USING hash (
-    account_id WITH =,
-    stack_uuid WITH =
+    key WITH =
 );
 
--- Hash index for account_id lookups (partial index excluding zero balances)
-CREATE INDEX idx_latest_account_id ON latest USING hash (account_id) 
-WHERE balance > 0;
+-- To track prunable stacks
+CREATE TABLE stacks (
+    stack_uuid BYTEA NOT NULL,
+    account_ids TEXT[] NOT NULL DEFAULT '{}'
+);
+
+-- B-tree partial index to track the prunable stacks, keeps o(1) on non-empty stack insertion
+CREATE INDEX idx_stacks_empty_accounts ON stacks (stack_uuid)
+WHERE account_ids = '{}';
+
+-- For player inventories
+CREATE TABLE inventories (
+    account_id TEXT NOT NULL,
+    stack_uuids BYTEA[] NOT NULL DEFAULT '{}'
+);
+
+CREATE INDEX idx_inventories_account_id_hash ON inventories USING hash (account_id);
+
+ALTER TABLE inventories ADD CONSTRAINT exc_account_id
+EXCLUDE USING hash (
+    account_id WITH =
+);
 
 -- Ledger table for transaction history
 CREATE TABLE ledger (
     account_id TEXT NOT NULL,
-    stack_uuid BIGINT NOT NULL,
+    stack_uuid BYTEA NOT NULL,
     sequence_number INTEGER NOT NULL CHECK (sequence_number >= 0),
     qty INTEGER NOT NULL,
     balance INTEGER NOT NULL CHECK (balance >= 0),
@@ -55,4 +70,3 @@ EXCLUDE USING hash (
     stack_uuid WITH =,
     sequence_number WITH =
 );
-

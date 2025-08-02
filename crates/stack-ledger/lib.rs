@@ -1,7 +1,7 @@
 use sqlx::{PgPool, Transaction, Postgres};
 use thiserror::{Error as ThisError};
 use std::hash::Hasher;
-use twox_hash::XxHash64;
+use twox_hash::XxHash128;
 
 #[derive(Debug, ThisError)]
 pub enum Error {
@@ -16,16 +16,13 @@ pub enum Error {
     },
 }
 
-fn compute_hash(x: i128, y: i128, z: i128, a: u32) -> u64 {
-    let mut hasher = XxHash64::with_seed(0);  // Seed = 0 for determinism
-    
-    // Write each value as bytes (little-endian)
+fn compute_hash(x: i128, y: i128, z: i128, a: u32) -> u128 {
+    let mut hasher = XxHash128::with_seed(0);  
     hasher.write_i128_le(x);
     hasher.write_i128_le(y);
     hasher.write_i128_le(z);
     hasher.write_u32_le(a);
-    
-    hasher.finish()  // Returns u64 hash
+    hasher.finish()  
 }
 
 struct StackLedger {
