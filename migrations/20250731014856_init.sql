@@ -21,7 +21,7 @@ CREATE TABLE latest (
 );
 
 -- For ownership validation
-CREATE INDEX idx_latest_key ON latest USING hash (key)
+CREATE INDEX idx_latest_key ON latest USING hash (key);
 
 -- Exclusion constraint on the generated key
 ALTER TABLE latest ADD CONSTRAINT exc_latest_key 
@@ -33,7 +33,7 @@ EXCLUDE USING hash (
 CREATE TABLE stacks (
     stack_uuid BYTEA NOT NULL,
     latest_keys BYTEA[] NOT NULL DEFAULT '{}',
-    ledger_entries BIGINT[] NOT NULL DEFAULT '{}',
+    ledger_entries BIGINT[] NOT NULL DEFAULT '{}'
 );
 
 -- If this was needed but I think it isn't, given the application layer logic, and skipping it reduces hash creation (insertion overhead)
@@ -65,6 +65,7 @@ CREATE TABLE ledger (
     account_id TEXT NOT NULL,
     stack_uuid BYTEA NOT NULL,
     sequence_number INTEGER NOT NULL CHECK (sequence_number >= 0),
+    composite BYTEA NOT NULL,
     qty INTEGER NOT NULL,
     balance INTEGER NOT NULL CHECK (balance >= 0),
     item_type INTEGER NOT NULL,
@@ -77,8 +78,6 @@ CREATE INDEX idx_ledger_key ON ledger USING hash (key);
 -- Exclusion constraint for composite uniqueness
 ALTER TABLE ledger ADD CONSTRAINT exc_ledger_composite
 EXCLUDE USING hash (
-    account_id WITH =,
-    stack_uuid WITH =,
-    sequence_number WITH =
+    composite WITH =
 );
 -- crear una BYTEA key y usar solo esa para el exclusion constraint, ya que postgres no puede hacer exclusion constraits de multiples columnas

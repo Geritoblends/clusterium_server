@@ -1,27 +1,23 @@
-// same imports as before
-use rustls::{ServerConfig, ServerConnection, StreamOwned};
-use std::sync::Arc;
+use sqlx::PgPool;
+use stack_ledger::{InventoryManager, StackLedger};
+use thiserror::{Error as ThisError};
 
-fn handle_tls_connection(mut stream: StreamOwned<ServerConnection, TcpStream>) {
-    let mut buffer = [0u8; 1024];
-    let n = stream.read(&mut buffer).unwrap();
-    let command = std::str::from_utf8(&buffer[..n]).unwrap().trim();
+#[derive(Debug, ThisError)]
+enum Error {
 
-    match command {
-        "/create" => {
-            // handle create
-        }
-        "/split" => {
-            // handle split
-        }
-        "/destroy" => {
-            // handle destroy
-        }
-        _ => {
-            // unknown command
-        }
-    }
+    #[error("Error from sqlx: {0}")]
+    SqlxError(#[from] sqlx::Error),
 
-    stream.write_all(b"OK\n").unwrap();
-    stream.flush().unwrap();
+    #[error("Error from StackLedger: {0}")]
+    StackLedgerError(#[from] stack_ledger::Error),
+
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Error> {
+    let pool = PgPool::connect("postgres://postgres:mysecretpassword@localhost:5432/postgres").await.expect("Couldn't connect to the database server");
+
+    let inventory_manager = InventoryManager::new(pool.clone());
+    let ledger = StackLedger::new(pool.clone());
+    Ok(())
 }
