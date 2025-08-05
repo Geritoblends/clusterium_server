@@ -46,6 +46,24 @@ fn compute_latest_key(account_id: &str, stack_uuid: u128) -> u128 {
     XxHash3_128::oneshot(&bytes)
 }
 
+fn compute_composite_key_bytes(account_id: &str, stack_uuid: u128, sequence_number: i32) -> Vec<u8> {
+    let account_bytes = account_id.as_bytes();
+    let uuid_bytes = stack_uuid.to_le_bytes();
+    let seq_num_bytes = sequence_number.to_le_bytes();
+    let mut bytes = Vec::with_capacity(account_bytes.len() + 16 + 4);
+    bytes.extend_from_slice(account_bytes);
+    bytes.extend_from_slice(&uuid_bytes);
+    bytes.extend_from_slice(&seq_num_bytes);
+    let composite_key = XxHash3_128::oneshot(&bytes);
+
+    composite_key.to_le_bytes().to_vec()
+}
+
+fn compute_craft_uuid_key() -> u128 {
+    fastrand::u128(..)
+}
+
+
 pub struct StackLedger {
     pool: PgPool,
 }
@@ -70,6 +88,7 @@ impl StackLedger {
         let latest_key = compute_latest_key(account_id, stack_uuid);
         let stack_uuid_bytes = stack_uuid.to_le_bytes();
         let latest_key_bytes = latest_key.to_le_bytes();
+        let composite_key_bytes = compute_composite_key_bytes(account_id, stack_uuid, 0);
 
         // Garantiza que solo un jugador pueda obtener el drop
         sqlx::query!(
@@ -81,13 +100,14 @@ impl StackLedger {
             .await?;
 
         let ledger_entry = sqlx::query!(
-            r#"INSERT INTO ledger (account_id, stack_uuid, sequence_number, qty, balance, item_type)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            r#"INSERT INTO ledger (account_id, stack_uuid, sequence_number, composite, qty, balance, item_type)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING key;
             "#,
             account_id,
             stack_uuid_bytes.as_slice(),
             0,
+            composite_key_bytes.as_slice(),
             qty as i32,
             qty as i32,
             item_type)
@@ -166,16 +186,18 @@ impl StackLedger {
             });
         }
 
+        let composite_key_bytes = compute_composite_key_bytes(account_id, stack_uuid, latest.sequence_number + 1);
         sqlx::query!(r#"
-        INSERT INTO ledger (stack_uuid, account_id, item_type, qty, balance, sequence_number)
-        VALUES ($1, $2, $3, $4, $5, $6);
+        INSERT INTO ledger (account_id, stack_uuid, sequence_number, composite, qty, balance, item_type)
+        VALUES ($1, $2, $3, $4, $5, $6, $7);
         "#,
-        stack_uuid_bytes.as_slice(),
         account_id,
-        latest.item_type,
-        qty,
-        latest.balance + qty,
-        latest.sequence_number + 1)
+        stack_uuid_bytes.as_slice(),
+        latest.sequence_number + 1,
+        composite_key_bytes.as_slice(),
+        -(qty as i32),
+        latest.balance -(qty as i32),
+        latest.item_type)
             .execute(&mut **tx)
             .await?;
 
@@ -217,7 +239,7 @@ impl StackLedger {
             Ok(())
     }
 
-    pub async fn split(&self, tx: &mut Transaction<'_, Postgres>, stack_uuid: u128, expected_item_type: i32, sender_id: &str, recipient_id: &str, qty: u32) -> Result<(), Error> {
+    pub async fn split(tx: &mut Transaction<'_, Postgres>, stack_uuid: u128, expected_item_type: i32, sender_id: &str, recipient_id: &str, qty: u32) -> Result<(), Error> {
 
         Self::destroy(tx, stack_uuid, expected_item_type, sender_id, qty).await?;
         
@@ -237,15 +259,18 @@ impl StackLedger {
         match result {
             Ok(latest) => {
 
+                let composite_key_bytes = compute_composite_key_bytes(recipient_id, stack_uuid, latest.sequence_number + 1);
+
                 sqlx::query!(
-                    r#"INSERT INTO ledger (stack_uuid, account_id, item_type, qty, balance, sequence_number)
-                    VALUES ($1, $2, $3, $4, $5, $6);"#,
-                    stack_uuid_bytes.as_slice(),
+                    r#"INSERT INTO ledger (account_id, stack_uuid, sequence_number, composite, qty, balance, item_type)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7);"#,
                     recipient_id,
-                    expected_item_type,
+                    stack_uuid_bytes.as_slice(),
+                    latest.sequence_number + 1,
+                    composite_key_bytes.as_slice(),
                     qty,
                     latest.balance + qty,
-                    latest.sequence_number + 1)
+                    latest.item_type)
                     .execute(&mut **tx)
                     .await?;
 
@@ -290,16 +315,19 @@ impl StackLedger {
 
             Err(sqlx::Error::RowNotFound) => {
 
+                let composite_key_bytes = compute_composite_key_bytes(recipient_id, stack_uuid, 0);
+
                 sqlx::query!(
-                    r#"INSERT INTO ledger (stack_uuid, account_id, item_type, qty, balance, sequence_number)
-                    VALUES ($1, $2, $3, $4, $5, $6);
+                    r#"INSERT INTO ledger (account_id, stack_uuid, sequence_number, composite, qty, balance, item_type)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7);
                     "#,
-                    stack_uuid_bytes.as_slice(),
                     recipient_id,
-                    expected_item_type,
+                    stack_uuid_bytes.as_slice(),
+                    0,
+                    composite_key_bytes.as_slice(),
                     qty,
                     qty,
-                    0)
+                    expected_item_type)
                     .execute(&mut **tx)
                     .await?;
 
@@ -350,12 +378,86 @@ impl StackLedger {
         Ok(())
     }
 
-    pub async fn create_from_xyza(&self, tx: &mut Transaction<'_, Postgres>, x: i128, y: i128, z: i128, a: u32, item_type: i32, qty: u32, account_id: &str) -> Result<u128, Error> {
+}
+
+enum DimensionInventory {
+    Overworld,
+    FlorestaNether,
+    TheSwamps,
+    TheDeep,
+    Abyssm,
+    Briefcase(String, u32), // for dynamic player briefcases
+}
+
+impl DimensionInventory {
+    fn as_str(&self) -> String {
+        match self {
+            DimensionInventory::Overworld => "xj9wka".to_string(),
+            DimensionInventory::FlorestaNether => "bq72ma".to_string(),
+            DimensionInventory::TheSwamps => "z8m2fc".to_string(),
+            DimensionInventory::TheDeep => "mj28tk".to_string(),
+            DimensionInventory::Abyssm => "kc91lq".to_string(),
+            DimensionInventory::Briefcase(account_id, briefcase_num) => {
+                format!("{}_b{}", account_id, briefcase_num)
+            }
+        }
+    }
+}
+
+struct StackSlice {
+    stack_uuid: u128,
+    qty: u32,
+    expected_item_type: i32,
+}
+
+trait InventoryActions {
+
+    async fn create_from_xyza(tx: &mut Transaction<'_, Postgres>, x: i128, y: i128, z: i128, a: u32, item_type: i32, qty: u32, account_id: &str) -> Result<u128, Error>;
+
+    async fn drop(&self, account_id: &str, stack_slices: &[StackSlice], to_world: &str, expected_item_type: i32) -> Result<(), Error>;
+
+    async fn craft(&self, account_id: &str, stack_slices: &[StackSlice], qty: u32, crafted_item_type: i32) -> Result<u128, Error>;
+ 
+}
+
+impl InventoryActions for StackLedger {
+
+    async fn create_from_xyza(tx: &mut Transaction<'_, Postgres>, x: i128, y: i128, z: i128, a: u32, item_type: i32, qty: u32, account_id: &str) -> Result<u128, Error> {
         let stack_uuid: u128 = compute_xyza_uuid(x, y, z, a); 
 
         Self::create(tx, stack_uuid, item_type, qty, account_id).await?;
         Ok(stack_uuid)
     }
+
+    async fn drop(&self, account_id: &str, stack_slices: &[StackSlice], to_world: &str, expected_item_type: i32) -> Result<(), Error> {
+
+        let mut tx = self.pool.begin().await?;
+
+        for stack_slice in stack_slices {
+            Self::split(&mut tx, stack_slice.stack_uuid, expected_item_type, account_id, to_world, stack_slice.qty).await?;
+        }
+
+        tx.commit().await?;
+        Ok(())
+    }
+
+    async fn craft(&self, account_id: &str, stack_slices: &[StackSlice], qty: u32, crafted_item_type: i32) -> Result<u128, Error> {
+
+        let mut tx = self.pool.begin().await?;
+
+        for stack_slice in stack_slices {
+            Self::destroy(&mut tx, stack_slice.stack_uuid, stack_slice.expected_item_type, account_id, stack_slice.qty).await?;
+        }
+
+        let crafted_stack_uuid = compute_craft_uuid_key();
+
+        Self::create(&mut tx, crafted_stack_uuid, crafted_item_type, qty, account_id).await?;
+        tx.commit().await?;
+
+        Ok(crafted_stack_uuid)
+
+    }
+
 }
 
 #[derive(Clone)]
