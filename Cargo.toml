@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-stack_ledger = { path = "./crates/stack-ledger" }  
+item_store = { path = "./crates/item-store" }  
 tokio = { version = "1.46", features = ["full"] }
 sqlx = { version = "0.8", features = ["postgres", "runtime-tokio", "macros"] }
 thiserror = "2.0"
@@ -12,5 +12,5 @@ thiserror = "2.0"
 [workspace]
 resolver = "3"
 members = [
-    "crates/stack-ledger",
+    "crates/items-db",
 ]
