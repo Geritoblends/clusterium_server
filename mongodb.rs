@@ -38,20 +38,12 @@ db.createCollection("items", {
         },
         balance: {
           bsonType: "int",
+          minimum: 0,
           description: "Item balance/quantity (int32)"
         },
         sequence_number: {
           bsonType: "int",
           description: "Sequence number (int32)"
-        },
-        expired_keys: {
-          bsonType: "array",
-          items: {
-            bsonType: "int",
-            minimum: 0,
-            maximum: 65535
-          },
-          description: "Array of u16 integers representing expired keys"
         },
         expires_at: {
           bsonType: "long",
@@ -69,18 +61,9 @@ db.items.createIndex({ "_id": "hashed" })
 // Account lookup (hashed index - best for equality queries with 10B+ values)
 db.items.createIndex({ "account_id": "hashed" })
 
-// Optional: Compound index for account queries with filters
-db.items.createIndex({ "account_id": 1, "item_type": 1 })
-
-// Optional: TTL index for buff expiration (only if you want automatic cleanup)
-db.items.createIndex({ "expires_at": 1 }, { 
-  expireAfterSeconds: 0,
-  partialFilterExpression: { "expires_at": { $exists: true } }
-})
-
 // 3. Enable sharding on items collection
-sh.enableSharding("your_database_name")
-sh.shardCollection("your_database_name.items", { "_id": "hashed" })
+sh.enableSharding("clusterium")
+sh.shardCollection("clusterium.items", { "_id": "hashed" })
 
 // ===============================
 // CONSUMED COLLECTION  
@@ -91,7 +74,7 @@ db.createCollection("consumed", {
   validator: {
     $jsonSchema: {
       bsonType: "object",
-      required: ["chunkrange_hash", "bloom_filter"],
+      required: ["chunkrange_hash", "bloom_filter", "sequence_number"],
       properties: {
         chunkrange_hash: {
           bsonType: "binData",
@@ -114,6 +97,10 @@ db.createCollection("consumed", {
               description: "Number of bits in the filter"
             }
           }
+        },
+        sequence_number: {
+            bsonType: "int",
+            description: "the sequence number (int32)"
         }
       }
     }
