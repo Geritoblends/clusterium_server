@@ -1,4 +1,41 @@
+use twox_hash::XxHash3_128;
 use mongodb::Client;
+
+fn compute_xyza_hash(x: i128, y: i128, z: i128, a: i32) -> u128 {
+    let mut bytes = [0u8; 52];  
+    
+    bytes[0..16].copy_from_slice(&x.to_le_bytes());
+    bytes[16..32].copy_from_slice(&y.to_le_bytes());
+    bytes[32..48].copy_from_slice(&z.to_le_bytes());
+    bytes[48..52].copy_from_slice(&a.to_le_bytes());
+    
+    XxHash3_128::oneshot(&bytes)
+}
+
+fn compute_account_item_hash(account_id: &str, item_type: i32) -> u128 {
+    let account_bytes = account_id.as_bytes();
+    let item_type_bytes = item_type.to_le_bytes();
+    let mut bytes = Vec::with_capacity(account_bytes.len() + 4);
+    bytes.extend_from_slice(account_bytes);
+    bytes.extend_from_slice(&item_type_bytes);
+    XxHash3_128::oneshot(&bytes)
+}
+
+fn compute_consumed_key(x: i128, y: i128, z: i128, a: i32) -> u128 {
+    let mut bytes = [0u8; 52]
+
+    let region_size: i128 = 10000; // Change later after optimization
+    let region_x = floor(x / region_size);
+    let region_y = floor(y / region_size);
+    let region_z = floor(z / region_size);
+
+    bytes[0..16].copy_from_slice(&region_x.to_le_bytes());
+    bytes[16..32].copy_from_slice(&region_y.to_le_bytes());
+    bytes[32..48].copy_from_slice(&region_z.to_le_bytes());
+    bytes[48..52].copy_from_slice(&a.to_le_bytes());
+
+    XxHash3_128::oneshot(&bytes)
+}
 
 #[derive(Clone, Debug)]
 struct ItemAmount {
@@ -40,9 +77,11 @@ trait EntityActions {
 
 impl InventoryWrites for ItemStore {
 
-    async fn obtain_from_xyza(account_id: &str, ) {
+    async fn obtain_from_xyza(account_id: &str, x: i128, y: i128, z: i128, a: i128) {
         // 1. generate the xyza hash
+        let xyza_hash = compute_xyza_hash(x, y, z, a);
         // 2. calculate the respective chunk range position
+        let consumed_key = compute_consumed_key(x, y, z, a);
         // 3. query for the current data of that chunk range
         // 4. try to feed the bloom filter with the xyza hash
         // 5. if feeding it returns "might exist in set", then finish the operation as there's
