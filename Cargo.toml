@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-item_store = { path = "./crates/item-store" }  
+item_store = { path = "./crates/items-db" }  
 tokio = { version = "1.46", features = ["full"] }
 sqlx = { version = "0.8", features = ["postgres", "runtime-tokio", "macros"] }
 thiserror = "2.0"
