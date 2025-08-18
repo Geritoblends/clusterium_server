@@ -1,47 +1,7 @@
 use twox_hash::XxHash3_128;
 use mongodb::Client;
-use item_store::utils::floor_div;
+use item_store::utils::{compute_xyza_hash, compute_account_item_hash, compute_consumed_key};
 
-fn compute_xyza_hash(x: i128, y: i128, z: i128, a: i32) -> u128 {
-    let mut bytes = [0u8; 52];  
-    
-    bytes[0..16].copy_from_slice(&x.to_le_bytes());
-    bytes[16..32].copy_from_slice(&y.to_le_bytes());
-    bytes[32..48].copy_from_slice(&z.to_le_bytes());
-    bytes[48..52].copy_from_slice(&a.to_le_bytes());
-    
-    XxHash3_128::oneshot(&bytes)
-}
-
-fn compute_account_item_hash(account_id: &str, item_type: i32) -> u128 {
-    let account_bytes = account_id.as_bytes();
-    let item_type_bytes = item_type.to_le_bytes();
-    let mut bytes = Vec::with_capacity(account_bytes.len() + 4);
-    bytes.extend_from_slice(account_bytes);
-    bytes.extend_from_slice(&item_type_bytes);
-    XxHash3_128::oneshot(&bytes)
-}
-
-fn compute_consumed_key(x: i128, y: i128, z: i128, a: i32) -> u128 {
-    let lootable_blocks_density = 0.1;
-    let looted_blocks_estimate = 0.5;
-    let actually_looted_avg = lootable_blocks_density / looted_blocks_estimate
-    let bloom_filter_tolerable_fp = 0.1;
-
-    let mut bytes = [0u8; 52]
-
-    let region_size: i128 = 64; // ~ 4KB size per bloom filter
-    let region_x = floor_div(x, region_size);
-    let region_y = floor_div(y, region_size);
-    let region_z = floor_div(z, region_size);
-
-    bytes[0..16].copy_from_slice(&region_x.to_le_bytes());
-    bytes[16..32].copy_from_slice(&region_y.to_le_bytes());
-    bytes[32..48].copy_from_slice(&region_z.to_le_bytes());
-    bytes[48..52].copy_from_slice(&a.to_le_bytes());
-
-    XxHash3_128::oneshot(&bytes)
-}
 
 #[derive(Clone, Debug)]
 struct ItemAmount {
@@ -111,7 +71,7 @@ impl InventoryWrites for ItemStore {
             match self.items.update_one(query, update).await {
                 Ok(_) => break,
                 Err(mongodb::Error::NoSuchDocument) => continue,
-                Err(e) => return e,
+                Err(e) => return Err(e),
             }
         }
         // 7. if its not the same anymore, repeat from step 3 to 7 until it is either a "might
@@ -119,9 +79,24 @@ impl InventoryWrites for ItemStore {
         Ok(())
     }
 
-    async fn craft(account_id: &str, debited: &[ItemAmount], credited: &[ItemAmount]) -> Result<(), Error> {
-        // 1. create the hash of all the associated debited elements + the account_id, then query
-        //    them all and check if they have enough balances
+    async fn craft(&self, account_id: &str, debited: &[ItemAmount], credited: &[ItemAmount]) -> Result<(), Error> {
+        // 1. create the hash of all the associated debited elements + the account_id
+        let debited_keys: Vec<u128> = Vec::with_capacity(debited.len())
+        for item_amount in debited {
+            let key = compute_account_item_hash(account_id, item_amount.item_type);
+            debited_keys.push(key);
+        }
+        //    then query them all and check if they have enough balances
+        let filter = doc! { "_id": { "$in": debited_keys } };   
+        let cursor = self.items.find(filter).await?;
+        let results: Vec<ItemDocument> = cursor
+            .try_collect()
+            .await?;
+        let items = Vec<Item> = results
+            .into_iter()
+            .map(|doc| doc.as_item())
+            .collect::<Result<Vec<Item>, _>>()?;
+        
         // 2. if they do, start a transaction and debit them
         // 3. query for the credited items, update the ones that exist, and insert any that doesn't
         //    with the item amount as balance. Check for the sequence_number to still match when
