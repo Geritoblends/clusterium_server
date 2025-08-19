@@ -1,26 +1,47 @@
 use mongodb::bson::{Binary};
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct InvalidOwnershipIdSize {
-    pub expected: usize,
-    pub actual: usize,
+struct ItemDocument {
+    #[serde(rename = "_id")]
+    id: Binary,
+    account_id: Binary,
+    balance: i32,
+    version: i32
 }
 
-impl std::fmt::Display for InvalidOwnershipIdSize {
+struct BuffDocument {
+    #[serde(rename = "_id")]
+    id: Binary,
+    account_id: Binary,
+    expires_at: i64
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum InvalidSize {
+    OwnershipId {
+        pub expected: usize,
+        pub actual: usize,
+    },
+    AccountId {
+        pub expected: usize,
+        pub actual: usize,
+    }
+}
+
+impl std::fmt::Display for InvalidSize {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Invalid OwnershipId size: expected {} bytes, got {}", 
                self.expected, self.actual)
     }
 }
 
-impl std::error::Error for InvalidOwnershipIdSize {}
+impl std::error::Error for InvalidSize {}
 
 impl TryFrom<Binary> for OwnershipId {
-    type Error = InvalidOwnershipIdSize;
+    type Error = InvalidSize::OwnershipId;
     
     fn try_from(binary: Binary) -> Result<Self, Self::Error> {
         let bytes: [u8; 12] = binary.bytes.try_into()
-            .map_err(|_| InvalidOwnershipIdSize { 
+            .map_err(|_| InvalidSize::OwnershipId { 
                 expected: 12, 
                 actual: binary.bytes.len() 
             })?;
@@ -34,5 +55,71 @@ impl From<OwnershipId> for Binary {
             subtype: mongodb::bson::spec::BinarySubtype::Generic,
             bytes: ownership_id.as_bytes().to_vec()
         }
+    }
+}
+
+impl TryFrom<Binary> for AccountId {
+    type Error = InvalidSize::AccountId;
+
+    fn try_from(binary: Binary) -> Result<Self, Self::Error> {
+        let bytes: [u8; 12] = binary.bytes.try_into()
+            .map-err(|_| InvalidSize::AccountId {
+                expected: 16,
+                actual: binary.bytes.len()
+            })?;
+        Ok(Self::new(&bytes))
+    }
+}
+
+impl From<AccountId> for Binary {
+    fn from(account_id: AccountId) -> Self {
+        Binary {
+            subtype: mongodb::bson::spec::BinarySubtype::Generic,
+            bytes: account_id.as_bytes().to_vec()
+        }
+    }
+}
+
+impl From<Item> for ItemDocument {
+    fn from(item: Item) -> Self {
+        ItemDocument {
+            id: item.get_id().into(),
+            account_id: item.get_account_id().into(),
+            balance: item.get_balance(),
+            version: item.get_version()
+        }
+    }
+}
+
+enum IdError {
+    Ownership(InvalidSize::OwnershipId),
+    Account(InvalidSize::AccountId)
+}
+
+impl TryFrom<ItemDocument> for Item {
+    type Error = IdError;
+    fn try_from(doc: ItemDocument) -> Result<Self, Self::Error> {
+        let ownership_id: OwnershipId = doc.id.try_into()?;
+        let account_id: AccountId = doc.account_id.try_into()?;
+        Ok(Self::new(ownership_id, account_id, doc.balance, doc.version))
+    }
+}
+
+impl From<Buff> for BuffDocument {
+    fn from(buff: Buff) -> Self {
+        BuffDocument {
+            id: buff.get_id().into(),
+            account_id: buff.get_account_id().into(),
+            expires_at: buff.get_expires_at()
+        }
+    }
+}
+
+impl TryFrom<BuffDocument> for Buff {
+    type Error = IdError;
+    fn try_from(doc: BuffDocument) -> Result<Self, Self::Error> {
+        let ownership_id: OwnershipId = doc.id.try_into()?;
+        let account_id: AccountId = doc.account_id.try_into()?;
+        Ok(Self::new(ownership_id, account_id, doc.expires_at))
     }
 }

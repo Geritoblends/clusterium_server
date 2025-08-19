@@ -51,8 +51,61 @@ pub struct Item {
     version: i32
 } 
 
+impl Item {
+
+    pub fn new(id: OwnershipId, account_id: AccountId, balance: i32, version: i32) -> Self {
+        Self {
+            id,
+            account_id,
+            balance,
+            version
+        }
+    }
+
+    pub fn get_id(&self) -> OwnershipId {
+        self.id
+    }
+
+    pub fn get_account_id(&self) -> AccountId {
+        self.account_id
+    }
+
+    pub fn get_balance(&self) -> i32 {
+        self.balance
+    }
+
+    pub fn get_version(&self) -> i32 {
+        self.version
+    }
+
+}
+
 pub struct Buff {
     id: OwnershipId,
     account_id: AccountId,
     expires_at: i64,
+}
+
+impl Buff {
+
+    pub fn new(id: OwnershipId, account_id: AccountId, expires_at: i64) -> Self {
+        Self {
+            id,
+            account_id,
+            expires_at
+        }
+    }
+
+    pub fn get_id(&self) -> OwnershipId {
+        self.id
+    }
+
+    pub fn get_account_id(&self) -> AccountId {
+        self.account_id
+    }
+
+    pub fn get_expires_at(&self) -> i64 {
+        self.expires_at
+    }
+
 }
