@@ -16,8 +16,8 @@ impl AccountId {
             .collect()
     }
 
-    pub fn as_bytes(&self) -> [u8; 16] {
-        self.id
+    pub fn as_bytes(&self) -> &[u8; 16] {
+        &self.id
     }
 
 }
@@ -28,12 +28,18 @@ pub struct OwnershipId {
 
 impl OwnershipId {
 
+    pub fn new(bytes: &[u8; 12]) -> Self {
+        Self {
+            id: *bytes
+        }
+    }
+
     pub fn as_base64(&self) -> String {
         BASE64.encode(&self.id)
     }
 
-    pub fn as_bytes(&self -> [u8; 12] {
-        self.id
+    pub fn as_bytes(&self) -> &[u8; 12] {
+        &self.id
     }
 
 }
@@ -44,3 +50,9 @@ pub struct Item {
     balance: i32,
     version: i32
 } 
+
+pub struct Buff {
+    id: OwnershipId,
+    account_id: AccountId,
+    expires_at: i64,
+}
