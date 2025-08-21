@@ -109,3 +109,111 @@ impl Buff {
     }
 
 }
+
+pub trait XYZValues {
+    fn get_bytes(&self) -> [u8; 24];
+}
+
+impl XYZValues {
+
+    pub fn get_x(&self) -> i64 {
+        let arr = self.get_bytes();
+        i64::from_le_bytes([
+            arr[0], arr[1], arr[2], arr[3],
+            arr[4], arr[5], arr[6], arr[7]
+        ])
+    }
+    
+    pub fn get_y(&self) -> i64 {
+        let arr = self.get_bytes();
+        i64::from_le_bytes([
+            arr[8], arr[9], arr[10], arr[11],
+            arr[12], arr[13], arr[14], arr[15]
+        ])
+    }
+
+    pub fn get_z(&self) -> i64 {
+        let arr = self.get_bytes();
+        i64::from_le_bytes([
+            arr[16], arr[17], arr[18], arr[19],
+            arr[20], arr[21], arr[22], arr[23]
+        ])
+    }
+
+}
+
+impl Position3D {
+    pub fn new(bytes: &[u8; 24]) -> Self {
+        Self {
+            bytes
+        }
+    }
+}
+
+impl XYZValues for Position3D {
+    fn get_bytes(&self) -> [u8; 24] {
+        self.bytes
+    }
+}
+        
+struct IndividualBlockId {
+    bytes: [u8; 24]
+}
+
+impl XYZValues for IndividualBlockId {
+    fn get_bytes(&self) -> [u8; 24] {
+        self.bytes
+    }
+}
+
+impl IndividualBlockId {
+    pub fn new(bytes: &[u8; 24]) -> Self {
+        Self {
+            bytes
+        }
+    }
+}
+
+struct RangeBlockId {
+    bytes: [u8; 12]
+}
+
+impl RangeBlockId {
+
+    pub fn new(bytes: &[u8; 12]) -> Self {
+        Self {
+            bytes
+        }
+    }
+
+    pub fn get_timestamp(&self) -> i64 {
+        let arr = self.get_bytes();
+        i64::from_le_bytes([
+            arr[0], arr[1], arr[2], arr[3],
+            arr[4], arr[5], arr[6], arr[7]
+        ])
+    }
+
+}
+
+pub enum BlockId {
+    Individual(IndividualBlockId),
+    Range(RangeBlockId),
+}
+
+pub enum BlockType {
+    Individual {
+        chunk_pos: Position3D,
+    },
+    Range {
+        from: Position3D,
+        to: Position3D,
+        chunks: Vec<Position3D>,
+    },
+}
+
+pub struct Block {
+    id: BlockId,
+    block_type: BlockType,
+    item_type: ItemType,
+}
