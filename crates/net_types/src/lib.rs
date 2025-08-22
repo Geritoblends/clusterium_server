@@ -148,6 +148,10 @@ impl Position3D {
             bytes
         }
     }
+
+    pub fn as_bytes(&self) -> &[u8; 24] {
+        self.bytes
+    }
 }
 
 impl XYZValues for Position3D {
@@ -215,5 +219,5 @@ pub enum BlockType {
 pub struct Block {
     id: BlockId,
     block_type: BlockType,
-    item_type: ItemType,
+    item_type: i32,
 }
