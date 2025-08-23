@@ -2,61 +2,84 @@ use serde::{Serialize, Deserialize};
 use mongodb::bson::{Oid::ObjectId, DateTime};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 
-pub struct AccountId {
-    id: [u8; 16]
+struct IndividualBlockId {
+    bytes: [u8; 12]
 }
 
-impl AccountId {
+#[derive(Serialize, Deserialize)]
+pub enum OwnerId {
+    Player(ObjectId),
+    Block(IndividualBlockId),
+}
 
-    pub fn as_ascii(&self) -> String {
-        self.id
-            .iter()
-            .filter(|&&b| b.is_ascii())
-            .map(|&b| b as char)
-            .collect()
-    }
+impl OwnerId {
 
-    pub fn as_bytes(&self) -> &[u8; 16] {
-        &self.id
+    fn as_bytes(&self) -> [u8; 12] {
+        match self {
+            Player(object_id) => {
+                object_id.as_bytes()
+            },
+            Block(individual_block_id) => {
+                individual_block_id.as_bytes()
+            }
+        }
     }
 
 }
 
 pub struct OwnershipId {
-    id: [u8; 12]
+    bytes: [u8; 16] // 12 bytes of the OwnerId and 4 bytes of the object type (i32)
+                    // or buff_type
 }
 
 impl OwnershipId {
 
-    pub fn new(bytes: &[u8; 12]) -> Self {
+    pub fn new(bytes: &[u8; 16]) -> Self {
         Self {
-            id: *bytes
+            bytes: *bytes
         }
     }
 
-    pub fn as_base64(&self) -> String {
-        BASE64.encode(&self.id)
+    /* pub fn as_base64(&self) -> String {
+        BASE64.encode(&self.bytes)
+    } */
+
+    pub fn as_bytes(&self) -> &[u8; 16] {
+        &self.bytes
     }
 
-    pub fn as_bytes(&self) -> &[u8; 12] {
-        &self.id
+    pub fn get_obj_type(&self) -> i32 {
+        let arr = self.bytes;
+        i32::from_le_bytes([
+            arr[12], arr[13], arr[14], arr[15]
+        ])
+    }
+
+    pub fn get_owner_bytes(&self) -> [u8; 12] {
+        let arr = self.bytes;
+        [
+            arr[0], arr[1], arr[2],
+            arr[3], arr[4], arr[5],
+            arr[6], arr[7], arr[8],
+            arr[9], arr[10], arr[11]
+        ]
     }
 
 }
 
 pub struct Item {
     id: OwnershipId,
-    account_id: AccountId,
+    owner_id: OwnerId,
     balance: i32,
     version: i32
 } 
 
 impl Item {
 
-    pub fn new(id: OwnershipId, account_id: AccountId, balance: i32, version: i32) -> Self {
+    pub fn new(id: OwnershipId, owner_id: OwnerId, balance: i32, version: i32) -> Self {
         Self {
             id,
-            account_id,
+            owner_id,
             balance,
             version
         }
@@ -66,8 +89,8 @@ impl Item {
         self.id
     }
 
-    pub fn get_account_id(&self) -> AccountId {
-        self.account_id
+    pub fn get_owner_id(&self) -> OwnerId {
+        self.owner_id
     }
 
     pub fn get_balance(&self) -> i32 {
@@ -82,16 +105,16 @@ impl Item {
 
 pub struct Buff {
     id: OwnershipId,
-    account_id: AccountId,
+    owner_id: OwnerId,
     expires_at: i64,
 }
 
 impl Buff {
 
-    pub fn new(id: OwnershipId, account_id: AccountId, expires_at: i64) -> Self {
+    pub fn new(id: OwnershipId, owner_id: OwnerId, expires_at: i64) -> Self {
         Self {
             id,
-            account_id,
+            owner_id,
             expires_at
         }
     }
@@ -100,8 +123,8 @@ impl Buff {
         self.id
     }
 
-    pub fn get_account_id(&self) -> AccountId {
-        self.account_id
+    pub fn get_owner_id(&self) -> OwnerId {
+        self.owner_id
     }
 
     pub fn get_expires_at(&self) -> i64 {
@@ -111,71 +134,73 @@ impl Buff {
 }
 
 pub trait XYZValues {
-    fn get_bytes(&self) -> [u8; 24];
-}
 
-impl XYZValues {
+    fn get_bytes(&self) -> [u8; 12];
 
-    pub fn get_x(&self) -> i64 {
+    fn get_x(&self) -> i32 {
         let arr = self.get_bytes();
-        i64::from_le_bytes([
-            arr[0], arr[1], arr[2], arr[3],
+        i32::from_le_bytes([
+            arr[0], arr[1], arr[2], arr[3]
+        ])
+    }
+
+    fn get_y(&self) -> i32 {
+        let arr = self.get_bytes();
+        i32::from_le_bytes([
             arr[4], arr[5], arr[6], arr[7]
         ])
     }
-    
-    pub fn get_y(&self) -> i64 {
-        let arr = self.get_bytes();
-        i64::from_le_bytes([
-            arr[8], arr[9], arr[10], arr[11],
-            arr[12], arr[13], arr[14], arr[15]
-        ])
-    }
 
-    pub fn get_z(&self) -> i64 {
+    fn get_z(&self) -> i32 {
         let arr = self.get_bytes();
-        i64::from_le_bytes([
-            arr[16], arr[17], arr[18], arr[19],
-            arr[20], arr[21], arr[22], arr[23]
+        i32::from_le_bytes([
+            arr[8], arr[9], arr[10], arr[11]
         ])
     }
 
 }
 
+struct Position3D {
+    bytes: [u8; 12]
+}
+
 impl Position3D {
-    pub fn new(bytes: &[u8; 24]) -> Self {
+
+    pub fn new(bytes: &[u8; 12]) -> Self {
         Self {
             bytes
         }
     }
 
-    pub fn as_bytes(&self) -> &[u8; 24] {
+    pub fn as_bytes(&self) -> &[u8; 12] {
         self.bytes
     }
+
 }
 
 impl XYZValues for Position3D {
-    fn get_bytes(&self) -> [u8; 24] {
+
+    fn get_bytes(&self) -> [u8; 12] {
         self.bytes
     }
+
 }
         
-struct IndividualBlockId {
-    bytes: [u8; 24]
-}
 
 impl XYZValues for IndividualBlockId {
-    fn get_bytes(&self) -> [u8; 24] {
+    fn get_bytes(&self) -> [u8; 12] {
         self.bytes
     }
 }
 
 impl IndividualBlockId {
-    pub fn new(bytes: &[u8; 24]) -> Self {
+
+    pub fn new(bytes: &[u8; 12]) -> Self {
         Self {
             bytes
         }
     }
+
 }
 
 struct RangeBlockId {
@@ -206,14 +231,17 @@ pub enum BlockId {
 }
 
 pub enum BlockType {
+
     Individual {
         chunk_pos: Position3D,
     },
+
     Range {
         from: Position3D,
         to: Position3D,
         chunks: Vec<Position3D>,
     },
+
 }
 
 pub struct Block {
@@ -221,3 +249,4 @@ pub struct Block {
     block_type: BlockType,
     item_type: i32,
 }
+

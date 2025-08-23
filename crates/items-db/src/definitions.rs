@@ -4,7 +4,7 @@ use serde::{Serialize, Deserialize};
 struct ItemDocument {
     #[serde(rename = "_id")]
     id: Binary,
-    account_id: Binary,
+    owner_id: Binary,
     balance: i32,
     version: i32
 }
@@ -12,7 +12,7 @@ struct ItemDocument {
 struct BuffDocument {
     #[serde(rename = "_id")]
     id: Binary,
-    account_id: Binary,
+    owner_id: Binary,
     expires_at: i64
 }
 
@@ -42,7 +42,7 @@ pub enum InvalidSize {
         pub expected: usize,
         pub actual: usize,
     },
-    AccountId {
+    OwnerId {
         pub expected: usize,
         pub actual: usize,
     },
@@ -73,9 +73,9 @@ impl TryFrom<Binary> for OwnershipId {
     type Error = InvalidSize::OwnershipId;
     
     fn try_from(binary: Binary) -> Result<Self, Self::Error> {
-        let bytes: [u8; 12] = binary.bytes.try_into()
+        let bytes: [u8; 16] = binary.bytes.try_into()
             .map_err(|_| InvalidSize::OwnershipId { 
-                expected: 12, 
+                expected: 16, 
                 actual: binary.bytes.len() 
             })?;
         Ok(Self::new(&bytes))
@@ -91,24 +91,24 @@ impl From<OwnershipId> for Binary {
     }
 }
 
-impl TryFrom<Binary> for AccountId {
-    type Error = InvalidSize::AccountId;
+impl TryFrom<Binary> for OwnerId {
+    type Error = InvalidSize::OwnerId;
 
     fn try_from(binary: Binary) -> Result<Self, Self::Error> {
         let bytes: [u8; 12] = binary.bytes.try_into()
-            .map-err(|_| InvalidSize::AccountId {
-                expected: 16,
+            .map-err(|_| InvalidSize::OwnerId {
+                expected: 12,
                 actual: binary.bytes.len()
             })?;
         Ok(Self::new(&bytes))
     }
 }
 
-impl From<AccountId> for Binary {
-    fn from(account_id: AccountId) -> Self {
+impl From<OwnerId> for Binary {
+    fn from(owner_id: OwnerId) -> Self {
         Binary {
             subtype: mongodb::bson::spec::BinarySubtype::Generic,
-            bytes: account_id.as_bytes().to_vec()
+            bytes: owner_id.as_bytes().to_vec()
         }
     }
 }
@@ -117,7 +117,7 @@ impl From<Item> for ItemDocument {
     fn from(item: Item) -> Self {
         ItemDocument {
             id: item.get_id().into(),
-            account_id: item.get_account_id().into(),
+            owner_id: item.get_owner_id().into(),
             balance: item.get_balance(),
             version: item.get_version()
         }
@@ -128,8 +128,8 @@ impl TryFrom<ItemDocument> for Item {
     type Error = InvalidSize;
     fn try_from(doc: ItemDocument) -> Result<Self, Self::Error> {
         let ownership_id: OwnershipId = doc.id.try_into()?;
-        let account_id: AccountId = doc.account_id.try_into()?;
-        Ok(Self::new(ownership_id, account_id, doc.balance, doc.version))
+        let owner_id: OwnerId = doc.owner_id.try_into()?;
+        Ok(Self::new(ownership_id, owner_id, doc.balance, doc.version))
     }
 }
 
@@ -137,7 +137,7 @@ impl From<Buff> for BuffDocument {
     fn from(buff: Buff) -> Self {
         BuffDocument {
             id: buff.get_id().into(),
-            account_id: buff.get_account_id().into(),
+            owner_id: buff.get_owner_id().into(),
             expires_at: buff.get_expires_at()
         }
     }
@@ -147,8 +147,8 @@ impl TryFrom<BuffDocument> for Buff {
     type Error = InvalidSize;
     fn try_from(doc: BuffDocument) -> Result<Self, Self::Error> {
         let ownership_id: OwnershipId = doc.id.try_into()?;
-        let account_id: AccountId = doc.account_id.try_into()?;
-        Ok(Self::new(ownership_id, account_id, doc.expires_at))
+        let owner_id: OwnerId = doc.owner_id.try_into()?;
+        Ok(Self::new(ownership_id, owner_id, doc.expires_at))
     }
 }
 
@@ -165,9 +165,9 @@ impl TryFrom<Binary> for Position3D {
     type Error = InvalidSize::Position3D;
     
     fn try_from(binary: Binary) -> Result<Self, Self::Error> {
-        let bytes: [u8; 24] = binary.bytes.try_into()
+        let bytes: [u8; 12] = binary.bytes.try_into()
             .map_err(|_| InvalidSize::Position3D { 
-                expected: 24, 
+                expected: 12, 
                 actual: binary.bytes.len() 
             })?;
         Ok(Self::new(&bytes))
@@ -187,9 +187,9 @@ impl TryFrom<Binary> for IndividualBlockId {
     type Error = InvalidSize::IndividualBlockId;
     
     fn try_from(binary: Binary) -> Result<Self, Self::Error> {
-        let bytes: [u8; 24] = binary.bytes.try_into()
+        let bytes: [u8; 12] = binary.bytes.try_into()
             .map_err(|_| InvalidSize::IndividualBlockId { 
-                expected: 24, 
+                expected: 12, 
                 actual: binary.bytes.len() 
             })?;
         Ok(Self::new(&bytes))
