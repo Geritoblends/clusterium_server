@@ -9,12 +9,6 @@ struct ItemAmount {
     amount: i32
 }
 
-#[derive(Clone, Debug)]
-struct ItemAmountHashed {
-    hashed_item_type: String,
-    amount: i32
-}
-
 struct ItemStore {
     client: Client
 }
