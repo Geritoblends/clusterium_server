@@ -2,14 +2,26 @@ use serde::{Serialize, Deserialize};
 use mongodb::bson::{Oid::ObjectId, DateTime};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 
-struct IndividualBlockId {
-    bytes: [u8; 12]
+pub struct ChunkId {
+    bytes: [u8; 10] // 4 bytes for x, 4 for z and 2 for y
+}
+
+// 16x16x16
+pub struct RelevantChunk {
+    id: ChunkId,
+    blocks: Vec<(i16, i32)>, // first integer is position in the flat array, second is the item_type
+    version: i32, // optimistic locking
+}
+
+// 32x32x64. 16 RelevantChunks will fit in one CommonChunk. Relevant blocks will overlap the common
+pub struct CommonChunk {
+    id: ChunkId,
+    blocks: Vec<(i16, i32)>,
 }
 
 #[derive(Serialize, Deserialize)]
 pub enum OwnerId {
     Player(ObjectId),
-    Block(IndividualBlockId),
 }
 
 impl OwnerId {
